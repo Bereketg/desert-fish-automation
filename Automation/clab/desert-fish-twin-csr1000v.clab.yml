@@ -1,0 +1,184 @@
+# =============================================================================
+# ContainerLab — Desert Fish Digital Twin (CSR1000v variant)
+# File: Automation/clab/desert-fish-twin-csr1000v.clab.yml
+#
+# USE THIS FILE when running with Cisco CSR1000v (vrnetlab/cisco_csr1000v).
+# For future use with a proper Catalyst/IOS-XE switch image, use:
+#   desert-fish-twin.clab.yml  (original — vr-xevm kind)
+#
+# KEY DIFFERENCES vs desert-fish-twin.clab.yml:
+#   - kind:  cisco_csr1000v  (not vr-xevm)
+#   - image: vrnetlab/cisco_csr1000v:16.12.5
+#   - Interface names: GigabitEthernetN  (not eN)
+#     CSR1000v requires "(?:Gi|GigabitEthernet)\d+" format per ContainerLab 0.76+
+#
+# L2 SWITCH FEATURE LIMITATION:
+#   CSR1000v is a router — switchport, spanning-tree portfast, dot1x, dhcp
+#   snooping commands will not apply. Use this lab for:
+#     ✅ Ansible SSH connectivity and auth validation
+#     ✅ TACACS+ / AAA config testing
+#     ✅ NTP, syslog, SNMPv3, ACL, banner testing
+#     ✅ Template rendering and variable substitution verification
+#     ❌ Layer 2 switch feature validation (use DevNet sandbox for those)
+#
+# USAGE:
+#   sudo clab deploy  -t desert-fish-twin-csr1000v.clab.yml
+#   sudo clab inspect -t desert-fish-twin-csr1000v.clab.yml
+#   sudo clab destroy -t desert-fish-twin-csr1000v.clab.yml
+#
+# RESOURCE ESTIMATE (Hetzner i7-7700, 64 GB RAM):
+#   Each CSR1000v node: ~1-2 GB RAM
+#   16 nodes (partial topology): ~20-24 GB RAM
+#   Boot time: 10-15 min per node on first start
+# =============================================================================
+
+name: desert-fish-twin
+
+mgmt:
+  network: clab-mgmt
+  ipv4-subnet: 172.20.20.0/24
+
+topology:
+
+  # ── Default node settings ──────────────────────────────────────────────────
+  defaults:
+    kind: cisco_csr1000v
+    image: vrnetlab/cisco_csr1000v:16.12.5
+
+  nodes:
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LONDON SITE  (10.10.x.x)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    LON-CORE1:
+      mgmt-ipv4: 172.20.20.11
+      env:
+        HOSTNAME: LON-CORE1
+
+    LON-CORE2:
+      mgmt-ipv4: 172.20.20.12
+      env:
+        HOSTNAME: LON-CORE2
+
+    LON-ACC1:
+      mgmt-ipv4: 172.20.20.21
+      env:
+        HOSTNAME: LON-ACC1
+
+    LON-ACC2:
+      mgmt-ipv4: 172.20.20.22
+      env:
+        HOSTNAME: LON-ACC2
+
+    LON-ACC3:
+      mgmt-ipv4: 172.20.20.23
+      env:
+        HOSTNAME: LON-ACC3
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PARIS SITE  (10.20.x.x)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    PAR-CORE1:
+      mgmt-ipv4: 172.20.20.41
+      env:
+        HOSTNAME: PAR-CORE1
+
+    PAR-CORE2:
+      mgmt-ipv4: 172.20.20.42
+      env:
+        HOSTNAME: PAR-CORE2
+
+    PAR-ACC1:
+      mgmt-ipv4: 172.20.20.51
+      env:
+        HOSTNAME: PAR-ACC1
+
+    PAR-ACC2:
+      mgmt-ipv4: 172.20.20.52
+      env:
+        HOSTNAME: PAR-ACC2
+
+    PAR-ACC3:
+      mgmt-ipv4: 172.20.20.53
+      env:
+        HOSTNAME: PAR-ACC3
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CAIRO SITE  (10.30.x.x)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    CAI-CORE1:
+      mgmt-ipv4: 172.20.20.71
+      env:
+        HOSTNAME: CAI-CORE1
+
+    CAI-CORE2:
+      mgmt-ipv4: 172.20.20.72
+      env:
+        HOSTNAME: CAI-CORE2
+
+    CAI-ACC1:
+      mgmt-ipv4: 172.20.20.81
+      env:
+        HOSTNAME: CAI-ACC1
+
+    CAI-ACC2:
+      mgmt-ipv4: 172.20.20.82
+      env:
+        HOSTNAME: CAI-ACC2
+
+    CAI-ACC3:
+      mgmt-ipv4: 172.20.20.83
+      env:
+        HOSTNAME: CAI-ACC3
+
+  # ── Links ──────────────────────────────────────────────────────────────────
+  # CSR1000v interface naming: GigabitEthernetN (not eN).
+  # ContainerLab 0.76+ enforces regexp: (?:Gi|GigabitEthernet)\d+
+  #
+  # Mapping:
+  #   GigabitEthernet1 = first data port  (Core-Core or Acc→Core1 uplink)
+  #   GigabitEthernet2 = second data port (Acc→Core2 redundant uplink)
+  #   GigabitEthernet3/4 = additional core ports for access switch uplinks
+  links:
+
+    # ── London: Core–Core link ──────────────────────────────────────────────
+    - endpoints: ["LON-CORE1:GigabitEthernet1", "LON-CORE2:GigabitEthernet1"]
+
+    # ── London: Access → Core1 uplinks ─────────────────────────────────────
+    - endpoints: ["LON-ACC1:GigabitEthernet1", "LON-CORE1:GigabitEthernet2"]
+    - endpoints: ["LON-ACC2:GigabitEthernet1", "LON-CORE1:GigabitEthernet3"]
+    - endpoints: ["LON-ACC3:GigabitEthernet1", "LON-CORE1:GigabitEthernet4"]
+
+    # ── London: Access → Core2 uplinks (redundant) ─────────────────────────
+    - endpoints: ["LON-ACC1:GigabitEthernet2", "LON-CORE2:GigabitEthernet2"]
+    - endpoints: ["LON-ACC2:GigabitEthernet2", "LON-CORE2:GigabitEthernet3"]
+    - endpoints: ["LON-ACC3:GigabitEthernet2", "LON-CORE2:GigabitEthernet4"]
+
+    # ── Paris: Core–Core link ───────────────────────────────────────────────
+    - endpoints: ["PAR-CORE1:GigabitEthernet1", "PAR-CORE2:GigabitEthernet1"]
+
+    # ── Paris: Access → Core1 uplinks ──────────────────────────────────────
+    - endpoints: ["PAR-ACC1:GigabitEthernet1", "PAR-CORE1:GigabitEthernet2"]
+    - endpoints: ["PAR-ACC2:GigabitEthernet1", "PAR-CORE1:GigabitEthernet3"]
+    - endpoints: ["PAR-ACC3:GigabitEthernet1", "PAR-CORE1:GigabitEthernet4"]
+
+    # ── Paris: Access → Core2 uplinks ──────────────────────────────────────
+    - endpoints: ["PAR-ACC1:GigabitEthernet2", "PAR-CORE2:GigabitEthernet2"]
+    - endpoints: ["PAR-ACC2:GigabitEthernet2", "PAR-CORE2:GigabitEthernet3"]
+    - endpoints: ["PAR-ACC3:GigabitEthernet2", "PAR-CORE2:GigabitEthernet4"]
+
+    # ── Cairo: Core–Core link ───────────────────────────────────────────────
+    - endpoints: ["CAI-CORE1:GigabitEthernet1", "CAI-CORE2:GigabitEthernet1"]
+
+    # ── Cairo: Access → Core1 uplinks ──────────────────────────────────────
+    - endpoints: ["CAI-ACC1:GigabitEthernet1", "CAI-CORE1:GigabitEthernet2"]
+    - endpoints: ["CAI-ACC2:GigabitEthernet1", "CAI-CORE1:GigabitEthernet3"]
+    - endpoints: ["CAI-ACC3:GigabitEthernet1", "CAI-CORE1:GigabitEthernet4"]
+
+    # ── Cairo: Access → Core2 uplinks ──────────────────────────────────────
+    - endpoints: ["CAI-ACC1:GigabitEthernet2", "CAI-CORE2:GigabitEthernet2"]
+    - endpoints: ["CAI-ACC2:GigabitEthernet2", "CAI-CORE2:GigabitEthernet3"]
+    - endpoints: ["CAI-ACC3:GigabitEthernet2", "CAI-CORE2:GigabitEthernet4"]
