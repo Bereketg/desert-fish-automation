@@ -19,6 +19,13 @@ all:
     ansible_user:            "{{ vault_ansible_user }}"
     ansible_password:        "{{ vault_ansible_pass }}"
     ansible_become_password: "{{ vault_enable_secret }}"
+    # CSR1000v 16.12.5 uses legacy SSH algorithms disabled by modern OpenSSH.
+    # KexAlgorithms  — re-enables SHA1-based key exchange
+    # HostKeyAlgorithms — re-enables ssh-rsa host key type
+    # For lab use only — production switches (IOS-XE 17.x+) do not need this.
+    ansible_ssh_extra_args: >-
+      -o KexAlgorithms=+diffie-hellman-group14-sha1
+      -o HostKeyAlgorithms=+ssh-rsa
 
   children:
 
