@@ -1,0 +1,26 @@
+---
+# Desert Fish — London site variables (site_oct = 10)
+site_name: London
+site_oct:  10
+
+# ISE VMs (TACACS+ and RADIUS)
+ise_vm1_ip: "10.10.10.91"
+ise_vm2_ip: "10.10.10.92"
+
+# NTP — Domain Controllers are the NTP source
+ntp_primary:   "10.10.10.81"
+ntp_secondary: "10.10.10.82"
+
+# Syslog → Promtail agent on the observability VM
+syslog_server: "10.10.10.110"
+
+# Prometheus SNMP trap receiver
+prometheus_snmp_collector: "10.10.10.110"
+
+# Default gateway for management VLAN 10 (Core HSRP VIP)
+mgmt_gateway: "10.10.10.1"
+
+# DNS
+dns_primary:   "10.10.10.101"
+dns_secondary: "10.10.10.102"
+domain_name:   "local.desertfish.com"

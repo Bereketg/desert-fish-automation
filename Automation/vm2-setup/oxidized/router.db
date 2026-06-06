@@ -1,0 +1,79 @@
+# =============================================================================
+# Oxidized — Fallback Device List (router.db)
+# Format: hostname:model:ip
+#
+# This file is the FALLBACK source used only when NetBox is unreachable.
+# Under normal operation, Oxidized reads its device list from the NetBox API.
+#
+# Once you run the netbox_populate.yml playbook, all devices will be in NetBox
+# and this file becomes purely a safety net.
+#
+# To switch to this source, edit oxidized/config and swap the source block
+# (instructions are in the config file comments).
+# =============================================================================
+
+# ── London Access Switches ──────────────────────────────────────────────────
+LON-ACC1:ios:10.10.10.51
+LON-ACC2:ios:10.10.10.52
+LON-ACC3:ios:10.10.10.53
+LON-ACC4:ios:10.10.10.54
+LON-ACC5:ios:10.10.10.55
+LON-ACC6:ios:10.10.10.56
+LON-ACC7:ios:10.10.10.57
+LON-ACC8:ios:10.10.10.58
+LON-ACC9:ios:10.10.10.59
+LON-ACC10:ios:10.10.10.60
+LON-ACC11:ios:10.10.10.61
+LON-ACC12:ios:10.10.10.62
+LON-ACC13:ios:10.10.10.63
+LON-ACC14:ios:10.10.10.64
+LON-ACC15:ios:10.10.10.65
+LON-ACC16:ios:10.10.10.66
+LON-ACC17:ios:10.10.10.67
+LON-ACC18:ios:10.10.10.68
+LON-ACC19:ios:10.10.10.69
+LON-ACC20:ios:10.10.10.70
+
+# ── Paris Access Switches ────────────────────────────────────────────────────
+PAR-ACC1:ios:10.20.10.51
+PAR-ACC2:ios:10.20.10.52
+PAR-ACC3:ios:10.20.10.53
+PAR-ACC4:ios:10.20.10.54
+PAR-ACC5:ios:10.20.10.55
+PAR-ACC6:ios:10.20.10.56
+PAR-ACC7:ios:10.20.10.57
+PAR-ACC8:ios:10.20.10.58
+PAR-ACC9:ios:10.20.10.59
+PAR-ACC10:ios:10.20.10.60
+PAR-ACC11:ios:10.20.10.61
+PAR-ACC12:ios:10.20.10.62
+PAR-ACC13:ios:10.20.10.63
+PAR-ACC14:ios:10.20.10.64
+PAR-ACC15:ios:10.20.10.65
+PAR-ACC16:ios:10.20.10.66
+PAR-ACC17:ios:10.20.10.67
+PAR-ACC18:ios:10.20.10.68
+PAR-ACC19:ios:10.20.10.69
+PAR-ACC20:ios:10.20.10.70
+
+# ── Cairo Access Switches ────────────────────────────────────────────────────
+CAI-ACC1:ios:10.30.10.51
+CAI-ACC2:ios:10.30.10.52
+CAI-ACC3:ios:10.30.10.53
+CAI-ACC4:ios:10.30.10.54
+CAI-ACC5:ios:10.30.10.55
+CAI-ACC6:ios:10.30.10.56
+CAI-ACC7:ios:10.30.10.57
+CAI-ACC8:ios:10.30.10.58
+CAI-ACC9:ios:10.30.10.59
+CAI-ACC10:ios:10.30.10.60
+CAI-ACC11:ios:10.30.10.61
+CAI-ACC12:ios:10.30.10.62
+CAI-ACC13:ios:10.30.10.63
+CAI-ACC14:ios:10.30.10.64
+CAI-ACC15:ios:10.30.10.65
+CAI-ACC16:ios:10.30.10.66
+CAI-ACC17:ios:10.30.10.67
+CAI-ACC18:ios:10.30.10.68
+CAI-ACC19:ios:10.30.10.69
+CAI-ACC20:ios:10.30.10.70

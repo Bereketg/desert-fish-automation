@@ -1,0 +1,78 @@
+# =============================================================================
+# Ansible Dynamic Inventory — NetBox
+# =============================================================================
+# WHY DYNAMIC INVENTORY:
+#   Instead of maintaining static hosts.yml files (which go stale), Ansible
+#   queries NetBox's REST API at runtime to get the current device list.
+#   Add a switch in NetBox → it's automatically in the next Ansible run.
+#   No more manually editing inventory files.
+#
+# PREREQUISITES:
+#   pip install pynetbox --break-system-packages
+#   ansible-galaxy collection install netbox.netbox
+#
+# USAGE:
+#   # Test the inventory (shows all groups and hosts):
+#   ansible-inventory -i Automation/inventories/netbox_inventory.yml --list
+#
+#   # Run a playbook using NetBox as the source:
+#   ansible-playbook -i Automation/inventories/netbox_inventory.yml \
+#                    Automation/playbooks/enforce_compliance.yml \
+#                    --vault-password-file ~/.vault_pass
+#
+# HOW GROUPS WORK:
+#   NetBox automatically creates Ansible groups from:
+#   - Sites    → group "site_london", "site_paris", "site_cairo"
+#   - Roles    → group "role_access_switch", "role_core_switch"
+#   - Tags     → group "tag_dot1x", "tag_new_deployment"
+#   - Platforms→ group "platform_ios_xe"
+#
+#   Example: to target only London access switches:
+#   ansible-playbook ... --limit "site_london:&role_access_switch"
+# =============================================================================
+
+plugin: netbox.netbox.nb_inventory
+
+# ── NetBox connection ──────────────────────────────────────────────────────────
+api_endpoint: "http://YOUR_VM2_IP:8000"      # REPLACE with actual VM2 IP address
+
+# Token stored in Ansible Vault — run:
+#   ansible-vault edit Automation/group_vars/all/vault.yml
+# and add:
+#   vault_netbox_token: "<value of NETBOX_API_TOKEN from VM2 .env>"
+token: "{{ lookup('vars', 'vault_netbox_token') }}"
+
+validate_certs: false
+
+# ── What to pull from NetBox ───────────────────────────────────────────────────
+# Fetch config_context — this is where we store per-device variables in NetBox
+# (e.g. custom VLAN overrides, port descriptions).
+config_context: true
+
+# Fetch interfaces so Ansible knows physical port names for each device.
+interfaces: true
+
+# ── How to group devices ───────────────────────────────────────────────────────
+group_by:
+  - site                  # → site_london, site_paris, site_cairo
+  - role                  # → role_access_switch, role_core_switch
+  - platform              # → platform_ios_xe
+  - tag                   # → any tags you apply in NetBox
+
+# ── Which devices to include ───────────────────────────────────────────────────
+# Only active devices. Decommissioned or planned devices are excluded.
+device_query_filters:
+  - status: "active"
+
+# ── How Ansible connects to each device ────────────────────────────────────────
+# These variables are added to EVERY host pulled from NetBox.
+# They mirror what was in group_vars/all/main.yml.
+compose:
+  ansible_host:            "primary_ip4.address | ansible.utils.ipaddr('address')"
+  ansible_network_os:      "'cisco.ios.ios'"
+  ansible_connection:      "'network_cli'"
+  ansible_become:          "True"
+  ansible_become_method:   "'enable'"
+  ansible_user:            "vault_ansible_user"
+  ansible_password:        "vault_ansible_pass"
+  ansible_become_password: "vault_enable_secret"

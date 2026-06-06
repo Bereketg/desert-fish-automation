@@ -1,0 +1,122 @@
+{
+  // ============================================================================
+  // Desert Fish — VS Code Workspace Settings
+  // These apply to EVERYONE who opens this folder — work Mac, personal Mac,
+  // or the Oracle VM1 remote session. They override user-level settings only
+  // for this project folder.
+  // ============================================================================
+
+  // ── Editor defaults ──────────────────────────────────────────────────────────
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.rulers": [100],
+  "editor.renderWhitespace": "boundary",
+  "editor.trimAutoWhitespace": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+
+  // ── File associations ─────────────────────────────────────────────────────────
+  // Tell VS Code which language mode to use for non-standard extensions.
+  "files.associations": {
+    "*.j2":          "jinja",        // Jinja2 templates → syntax highlighting
+    "*.yml":         "yaml",
+    "*.yaml":        "yaml",
+    "vault.yml":     "yaml",         // Ansible Vault files still shown as YAML
+    "hosts.yml":     "yaml",
+    "ansible.cfg":   "ini",
+    "router.db":     "plaintext",
+    "config":        "yaml"          // Oxidized config file
+  },
+
+  // ── YAML settings ────────────────────────────────────────────────────────────
+  // Auto-validate Ansible playbooks and inventory files against their schemas.
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/tasks": [
+      "playbooks/*.yml",
+      "roles/**/tasks/*.yml"
+    ],
+    "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/inventory.json": [
+      "inventories/**/*.yml"
+    ]
+  },
+  "yaml.validate": true,
+  "yaml.hover": true,
+  "yaml.completion": true,
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml",
+    "editor.tabSize": 2
+  },
+
+  // ── Ansible extension settings ────────────────────────────────────────────────
+  // Tell the Ansible extension where ansible and ansible-lint live on Oracle VM1.
+  "ansible.ansible.path": "/usr/local/bin/ansible",
+  "ansible.ansibleLint.path": "/usr/local/bin/ansible-lint",
+  "ansible.ansibleLint.enabled": true,
+  // Show lint errors as you type (not just on save).
+  "ansible.ansibleLint.arguments": "--profile=production",
+
+  // ── Python settings ──────────────────────────────────────────────────────────
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4
+  },
+
+  // ── Jinja2 template settings ─────────────────────────────────────────────────
+  "[jinja]": {
+    "editor.tabSize": 2,
+    "editor.wordWrap": "off"
+  },
+
+  // ── Git settings ─────────────────────────────────────────────────────────────
+  // Automatically fetch from GitHub when you open VS Code.
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  // Show the branch name in the status bar always.
+  "git.branchProtection": ["main", "production"],
+  // Require a commit message — prevents accidental empty commits.
+  "git.inputValidationLength": 72,
+  "git.inputValidationSubjectLength": 72,
+
+  // ── GitLens settings ─────────────────────────────────────────────────────────
+  "gitlens.currentLine.enabled": true,
+  "gitlens.hovers.currentLine.over": "line",
+  "gitlens.blame.format": "${author|10} ${agoOrDate|14} ${message|50}",
+
+  // ── Remote SSH settings ───────────────────────────────────────────────────────
+  // Always confirm before closing a remote window to avoid accidental disconnects.
+  "remote.SSH.remotePlatform": {
+    "desert-fish-vm1":  "linux",
+    "desert-fish-vm2":  "linux",
+    "desert-fish-clab": "linux"
+  },
+  // Keep the SSH connection alive while idle.
+  "remote.SSH.connectTimeout": 30,
+
+  // ── Terminal settings ─────────────────────────────────────────────────────────
+  // When connected via Remote SSH, the integrated terminal opens on Oracle VM1.
+  // This is where you run ansible-playbook commands.
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.scrollback": 5000,
+
+  // ── Search exclusions ─────────────────────────────────────────────────────────
+  // Skip generated/binary files in project-wide search.
+  "search.exclude": {
+    "**/.git":              true,
+    "**/__pycache__":       true,
+    "**/.pytest_cache":     true,
+    "**/node_modules":      true,
+    "**/*.pyc":             true,
+    "observability/loki/":  true
+  },
+
+  // ── File explorer ─────────────────────────────────────────────────────────────
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.yml": "${capture}.vault.yml",
+    "docker-compose.yml": ".env, .env.example, .gitignore"
+  }
+}

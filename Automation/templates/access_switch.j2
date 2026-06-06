@@ -1,0 +1,341 @@
+{# ═══════════════════════════════════════════════════════════════════
+   Desert Fish Enterprise Networks
+   Access Switch — Desired State Template (Jinja2)
+   ---------------------------------------------------------------
+   HOW THIS WORKS:
+   Ansible reads the variables from group_vars + host_vars, fills
+   in every {{ variable }} placeholder below, and pushes the
+   resulting config to the switch. Running this twice is safe —
+   IOS-XE will only apply lines that are different (idempotent).
+
+   DO NOT EDIT SWITCH CONFIGS DIRECTLY IN THE CLI.
+   All changes go through Git → Ansible pipeline.
+   Generated: {{ ansible_date_time.date | default('see Git log') }}
+   ═══════════════════════════════════════════════════════════════ #}
+
+! ═══════════════════════════════════════════════════════════════════
+! {{ hostname }}  |  {{ site_name }} Office
+! MGMT IP : {{ mgmt_ip }} / {{ mgmt_mask }}
+! Gateway : {{ mgmt_gateway }}
+! Managed by Ansible — do not edit manually
+! ═══════════════════════════════════════════════════════════════════
+
+! ─── Global services ───────────────────────────────────────────────
+! Timestamps in logs help correlate events across switches in Grafana.
+! password-encryption hides Type-7 passwords from shoulder surfing.
+service timestamps debug datetime msec localtime show-timezone year
+service timestamps log   datetime msec localtime show-timezone year
+service password-encryption
+no service pad
+no ip http server
+no ip http secure-server
+no ip http secure-port 443
+
+hostname {{ hostname }}
+
+! ─── Local fallback account ────────────────────────────────────────
+! Used ONLY if both ISE servers are unreachable (e.g., WAN failure).
+! Normal logins go through TACACS+ on ISE (see AAA section below).
+enable secret {{ vault_enable_secret }}
+username {{ local_admin_user }} privilege 15 secret {{ vault_local_admin_pass }}
+
+! ─── AAA — Centralised identity via Cisco ISE (TACACS+) ────────────
+! WHY TACACS+?
+!   - Single credential change updates all 60 switches instantly
+!   - Per-command authorisation (who ran what, when)
+!   - Full accounting log sent to ISE → visible in Grafana/Loki
+!   - TACACS+ separates authentication / authorisation / accounting
+!     (unlike RADIUS which bundles auth+authz)
+aaa new-model
+!
+! Two ISE VMs for redundancy — if ISE-VM1 fails, Ansible/ISE fails
+! over to ISE-VM2 automatically within the 5-second timeout.
+aaa group server tacacs+ TACACS-ISE
+ server name ISE-VM1
+ server name ISE-VM2
+!
+! Login: try ISE first; if both ISE servers are down, use local DB.
+aaa authentication login default        group TACACS-ISE local
+aaa authentication login CONSOLE        local
+aaa authentication enable default       group TACACS-ISE enable
+!
+! Authorisation: ISE grants exec shell and validates each command.
+aaa authorization exec     default group TACACS-ISE local if-authenticated
+aaa authorization commands 15 default group TACACS-ISE local if-authenticated
+!
+! Accounting: every show/config command logged to ISE audit trail.
+aaa accounting exec     default start-stop group TACACS-ISE
+aaa accounting commands 15 default start-stop group TACACS-ISE
+!
+tacacs server ISE-VM1
+ address ipv4 {{ ise_vm1_ip }}
+ key {{ vault_tacacs_key }}
+ timeout 5
+ single-connection
+!
+tacacs server ISE-VM2
+ address ipv4 {{ ise_vm2_ip }}
+ key {{ vault_tacacs_key }}
+ timeout 5
+ single-connection
+!
+
+! ─── RADIUS — 802.1X endpoint authentication via ISE ───────────────
+! WHY 802.1X?
+!   Every access port requires an identity before granting network
+!   access. ISE profiles the endpoint (Windows PC, IP phone, AP)
+!   and dynamically assigns the correct VLAN. This means:
+!   - A rogue laptop plugged into a port gets put in the GUEST VLAN
+!   - An IP phone is automatically placed in VOICE VLAN 30
+!   - No manual VLAN changes needed when people move desks
+!
+!   MAB (MAC Authentication Bypass) is the fallback for devices
+!   that cannot do 802.1X (printers, IoT, older phones).
+aaa authentication dot1x default group RADIUS-ISE
+aaa authorization  network  default group RADIUS-ISE
+aaa accounting     dot1x    default start-stop group RADIUS-ISE
+!
+aaa group server radius RADIUS-ISE
+ server name ISE-RADIUS-1
+ server name ISE-RADIUS-2
+ deadtime 10
+!
+radius server ISE-RADIUS-1
+ address ipv4 {{ ise_vm1_ip }} auth-port 1812 acct-port 1813
+ key {{ vault_radius_key }}
+ timeout 5
+ retransmit 2
+!
+radius server ISE-RADIUS-2
+ address ipv4 {{ ise_vm2_ip }} auth-port 1812 acct-port 1813
+ key {{ vault_radius_key }}
+ timeout 5
+ retransmit 2
+!
+dot1x system-auth-control
+
+! ─── DHCP Snooping ─────────────────────────────────────────────────
+! WHY? Prevents rogue DHCP servers on access ports from poisoning
+! the DHCP table. Only the uplink trunk ports (to Core switches)
+! are marked as trusted — set below per interface.
+ip dhcp snooping
+ip dhcp snooping vlan 20,30,40,50,60
+no ip dhcp snooping information option
+!
+! Dynamic ARP Inspection — prevents ARP spoofing / man-in-the-middle
+ip arp inspection vlan 20,30,40,50,60
+
+! ─── VLANs ─────────────────────────────────────────────────────────
+! Jinja2 loop — generates a 'vlan / name' block for every entry
+! in the vlans list defined in group_vars/all/main.yml
+{% for vlan in vlans %}
+vlan {{ vlan.id }}
+ name {{ vlan.name }}
+!
+{% endfor %}
+
+! ─── Management SVI (VLAN 10) ──────────────────────────────────────
+! WHY a dedicated management VLAN?
+!   Separates switch administration traffic from user data.
+!   VLAN 10 has no DHCP scope — static IPs only (per design).
+!   The ACL on the VTY lines (below) restricts SSH to VLAN 10 only.
+interface Vlan{{ mgmt_vlan }}
+ description MGMT-SVI-{{ hostname }}
+ ip address {{ mgmt_ip }} {{ mgmt_mask }}
+ no ip proxy-arp
+ no shutdown
+!
+ip default-gateway {{ mgmt_gateway }}
+
+! ─── DNS ───────────────────────────────────────────────────────────
+ip domain-name {{ domain_name }}
+ip name-server {{ dns_primary }}
+ip name-server {{ dns_secondary }}
+
+! ─── Spanning Tree ─────────────────────────────────────────────────
+! WHY Rapid-PVST+?
+!   Per-VLAN topology control + sub-second port state convergence
+!   (vs classic STP's 30-50 second convergence). Access switches
+!   are always downstream — Core1/Core2 are the root bridges.
+!   PortFast skips the listening/learning delay on access ports.
+!   BPDU Guard shuts a port immediately if a BPDU arrives —
+!   this protects against a rogue switch being plugged in.
+spanning-tree mode rapid-pvst
+spanning-tree extend system-id
+spanning-tree loopguard default
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+
+! ─── Uplink to Core 1 (Primary) ────────────────────────────────────
+interface {{ uplink_core1.port }}
+ description {{ uplink_core1.description }}
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan {{ native_vlan }}
+ switchport trunk allowed vlan 10,20,30,40,50,60
+ spanning-tree portfast trunk
+ spanning-tree guard none
+ ip dhcp snooping trust
+ ip arp inspection trust
+ no shutdown
+!
+
+! ─── Uplink to Core 2 (Redundant) ──────────────────────────────────
+interface {{ uplink_core2.port }}
+ description {{ uplink_core2.description }}
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan {{ native_vlan }}
+ switchport trunk allowed vlan 10,20,30,40,50,60
+ spanning-tree portfast trunk
+ spanning-tree guard none
+ ip dhcp snooping trust
+ ip arp inspection trust
+ no shutdown
+!
+
+! ─── Access Ports ───────────────────────────────────────────────────
+! Jinja2 loop — one interface block per port defined in host_vars.
+! type: data_voice  →  access port with IP phone voice VLAN
+! type: ap          →  trunk port for Wi-Fi AP (VLANs 40 + 50)
+! type: data        →  plain access port, no voice VLAN
+{% for port in access_ports %}
+interface {{ port.name }}
+ description {{ port.description }}
+{% if port.type == 'ap' %}
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan {{ native_vlan }}
+ switchport trunk allowed vlan {{ port.data_vlan | default(wireless_vlan) }},{{ guest_vlan }}
+{% else %}
+ switchport mode access
+ switchport access vlan {{ port.data_vlan | default(data_vlan) }}
+{% if port.type == 'data_voice' %}
+ switchport voice vlan {{ voice_vlan }}
+{% endif %}
+{% endif %}
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ storm-control broadcast level 20.00
+ storm-control multicast level 20.00
+ storm-control action shutdown
+ ip dhcp snooping limit rate 15
+{% if port.dot1x | default(true) %}
+ ! 802.1X + MAB — identity required before VLAN assignment
+ authentication event fail        action next-method
+ authentication event server dead action reinitialize vlan {{ port.data_vlan | default(data_vlan) }}
+ authentication event server alive action reinitialize
+ authentication host-mode multi-auth
+ authentication order dot1x mab
+ authentication priority dot1x mab
+ authentication port-control auto
+ authentication periodic
+ authentication timer reauthenticate server
+ authentication violation restrict
+ dot1x pae authenticator
+ dot1x timeout tx-period 10
+ mab
+{% endif %}
+ no shutdown
+!
+{% endfor %}
+
+! ─── Unused Ports — administratively shut down ─────────────────────
+! WHY? Open ports are an attack surface. Any unused port is placed
+! in a dead VLAN (999) and shut down until needed.
+{% if unused_ports is defined %}
+{% for port in unused_ports %}
+interface {{ port }}
+ description UNUSED-DISABLED
+ switchport mode access
+ switchport access vlan 999
+ spanning-tree bpduguard enable
+ shutdown
+!
+{% endfor %}
+{% endif %}
+
+! ─── NTP ───────────────────────────────────────────────────────────
+! WHY? Accurate timestamps are critical for:
+!   1. Kerberos authentication (fails if clock skew > 5 minutes)
+!   2. Log correlation across switches in Grafana/Loki
+!   3. TLS certificate validation
+! Source DCs are the NTP stratum-1 servers per Desert Fish design.
+ntp server {{ ntp_primary }} prefer
+ntp server {{ ntp_secondary }}
+ntp update-calendar
+
+! ─── Syslog → Promtail (Loki agent) ───────────────────────────────
+! WHY? Centralising syslog into Loki lets Grafana show interface
+! flaps, STP topology changes, 802.1X failures, and ACL hits
+! in one dashboard with timestamps correlated across all sites.
+logging buffered 51200 informational
+logging trap informational
+logging source-interface Vlan{{ mgmt_vlan }}
+logging host {{ syslog_server }}
+no logging console
+
+! ─── SNMPv3 (AuthPriv) — polled by Prometheus SNMP Exporter ────────
+! WHY SNMPv3 AuthPriv?
+!   v1/v2c transmit community strings in clear text — trivial to
+!   intercept. v3 AuthPriv authenticates the manager (SHA) and
+!   encrypts the payload (AES-128). The SNMP Exporter running
+!   on the observability VM polls every 60s for:
+!     - Interface in/out octets   (bandwidth graphs)
+!     - Interface errors/discards (health alerts)
+!     - CPU + memory              (capacity planning)
+!     - SNMP linkDown/linkUp traps (instant alerts)
+snmp-server group   SNMP-MONITOR v3 priv read SNMP-RO-VIEW
+snmp-server view    SNMP-RO-VIEW iso included
+snmp-server user    {{ snmp_user }} SNMP-MONITOR v3 auth {{ snmp_auth_algo }} {{ vault_snmp_auth_pass }} priv {{ snmp_priv_algo }} {{ vault_snmp_priv_pass }}
+snmp-server location {{ site_name }}-{{ hostname }}
+snmp-server contact  netops@desertfish.com
+snmp-server enable traps snmp linkdown linkup coldstart
+snmp-server enable traps spanning-tree
+snmp-server enable traps mac-notification change
+snmp-server host {{ prometheus_snmp_collector }} version 3 priv {{ snmp_user }}
+
+! ─── SSH v2 — only allowed from MGMT VLAN 10 ───────────────────────
+! WHY restrict SSH to VLAN 10?
+!   Defence-in-depth: even if a user VLAN is compromised, attackers
+!   cannot SSH to switches because the ACL blocks them at the
+!   management plane. Only hosts in VLAN 10 (10.x.10.0/24) can
+!   reach the VTY lines.
+crypto key generate rsa modulus 4096
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh source-interface Vlan{{ mgmt_vlan }}
+!
+ip access-list standard MGMT-ACCESS
+ 10 permit 10.10.10.0 0.0.0.255
+ 20 permit 10.20.10.0 0.0.0.255
+ 30 permit 10.30.10.0 0.0.0.255
+ 40 deny   any log
+!
+line vty 0 15
+ access-class MGMT-ACCESS in
+ exec-timeout 10 0
+ login authentication default
+ authorization exec default
+ transport input ssh
+!
+line con 0
+ exec-timeout 5 0
+ login authentication CONSOLE
+ logging synchronous
+ stopbits 1
+!
+
+! ─── Login banner ──────────────────────────────────────────────────
+banner motd ^C
++=================================================================+
+|  Desert Fish Enterprise Networks                                |
+|  Device  : {{ hostname | center(55) }}|
+|  Site    : {{ site_name | center(55) }}|
+|  AUTHORISED ACCESS ONLY                                         |
+|  All sessions are recorded and monitored                        |
++=================================================================+
+^C
+
+end

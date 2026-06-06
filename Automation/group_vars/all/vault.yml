@@ -1,0 +1,16 @@
+---
+# ═══════════════════════════════════════════════════════════════════
+# SECRETS — DO NOT COMMIT IN PLAIN TEXT
+# Encrypt this file: ansible-vault encrypt group_vars/all/vault.yml
+# Edit later:        ansible-vault edit   group_vars/all/vault.yml
+# ═══════════════════════════════════════════════════════════════════
+
+vault_enable_secret:    "ChangeMe!Str0ng#Enable"
+vault_local_admin_pass: "ChangeMe!Str0ng#Local"
+vault_tacacs_key:       "ChangeMe!Str0ng#TACACS"
+vault_radius_key:       "ChangeMe!Str0ng#RADIUS"
+vault_snmp_auth_pass:   "ChangeMe!Str0ng#SNMPauth"
+vault_snmp_priv_pass:   "ChangeMe!Str0ng#SNMPpriv"
+vault_ansible_user:     netadmin
+vault_ansible_pass:     "ChangeMe!Str0ng#SSH"
+vault_ansible_become_pass: "ChangeMe!Str0ng#Enable"

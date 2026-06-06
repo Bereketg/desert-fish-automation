@@ -1,0 +1,94 @@
+---
+# ═══════════════════════════════════════════════════════════════════
+# Desert Fish — Enforce Compliance (Drift Detection + Correction)
+#
+# WHAT IT DOES:
+#   Re-applies the desired state to ALL switches.
+#   If someone made a manual CLI change, this corrects it silently.
+#   If a new switch has never been configured, this provisions it.
+#   Schedule this via AWX to run nightly (e.g., 2 AM local time).
+#
+# KEY CONCEPT — IDEMPOTENCY:
+#   Running this 100 times produces the same result as running it once.
+#   IOS-XE only accepts lines that differ from the running config —
+#   no unnecessary changes are made.
+#
+# HOW TO RUN:
+#   # All London switches:
+#   ansible-playbook playbooks/enforce_compliance.yml \
+#     -i inventories/london/ --ask-vault-pass
+#
+#   # Check mode (DRY RUN — shows what WOULD change, no actual push):
+#   ansible-playbook playbooks/enforce_compliance.yml \
+#     -i inventories/london/ --check --ask-vault-pass
+# ═══════════════════════════════════════════════════════════════════
+
+- name: "Desert Fish — Enforce Compliance"
+  hosts: access_switches
+  gather_facts: false
+  vars:
+    ansible_user:            "{{ vault_ansible_user }}"
+    ansible_password:        "{{ vault_ansible_pass }}"
+    ansible_become_password: "{{ vault_ansible_become_pass }}"
+
+  tasks:
+    - name: "Render desired state from template"
+      ansible.builtin.template:
+        src:  ../templates/access_switch.j2
+        dest: "/tmp/{{ inventory_hostname }}_desired.txt"
+      delegate_to: localhost
+
+    - name: "Collect running config for drift report"
+      cisco.ios.ios_command:
+        commands: "show running-config"
+      register: running_cfg
+
+    - name: "Apply desired state (idempotent)"
+      cisco.ios.ios_config:
+        src:       "/tmp/{{ inventory_hostname }}_desired.txt"
+        save_when: changed
+      register: drift_result
+
+    - name: "Report drift — lines that were corrected"
+      ansible.builtin.debug:
+        msg: >
+          {% if drift_result.updates | default([]) | length > 0 %}
+          DRIFT DETECTED and corrected on {{ inventory_hostname }}:
+          {{ drift_result.updates | join('\n') }}
+          {% else %}
+          No drift — {{ inventory_hostname }} is compliant.
+          {% endif %}
+
+    # Compliance checks — fail the play if critical items are missing
+    - name: "Check: dot1x system-auth-control is enabled"
+      cisco.ios.ios_command:
+        commands: "show running-config | include dot1x system-auth-control"
+      register: dot1x_check
+
+    - name: "Assert dot1x is enabled"
+      ansible.builtin.assert:
+        that: "'dot1x system-auth-control' in dot1x_check.stdout[0]"
+        fail_msg:  "COMPLIANCE FAIL: dot1x system-auth-control missing on {{ inventory_hostname }}"
+        success_msg: "PASS: dot1x is enabled"
+
+    - name: "Check: SNMPv3 user is configured"
+      cisco.ios.ios_command:
+        commands: "show snmp user"
+      register: snmp_check
+
+    - name: "Assert SNMPv3 user exists"
+      ansible.builtin.assert:
+        that: "'{{ snmp_user }}' in snmp_check.stdout[0]"
+        fail_msg:  "COMPLIANCE FAIL: SNMPv3 user {{ snmp_user }} missing on {{ inventory_hostname }}"
+        success_msg: "PASS: SNMPv3 configured"
+
+    - name: "Check: NTP associations"
+      cisco.ios.ios_command:
+        commands: "show ntp associations"
+      register: ntp_check
+
+    - name: "Assert primary NTP is associated"
+      ansible.builtin.assert:
+        that: "'{{ ntp_primary }}' in ntp_check.stdout[0]"
+        fail_msg:  "COMPLIANCE FAIL: NTP primary {{ ntp_primary }} not associated on {{ inventory_hostname }}"
+        success_msg: "PASS: NTP synchronized"

@@ -1,0 +1,26 @@
+# SNMPv3 AuthPriv credentials for Desert Fish switches
+# This matches what Ansible configured on every switch.
+auths:
+  desert_fish_v3:
+    community:     ""
+    security_level: authPriv
+    username:      DESERT-FISH-MON
+    password:      "CHANGE-ME-matches-vault_snmp_auth_pass"
+    auth_protocol: SHA
+    priv_password: "CHANGE-ME-matches-vault_snmp_priv_pass"
+    priv_protocol: AES
+
+modules:
+  if_mib:
+    walk:
+      - sysUpTime
+      - interfaces
+      - ifXTable
+    lookups:
+      - source_indexes: [ifIndex]
+        lookup: ifAlias
+      - source_indexes: [ifIndex]
+        lookup: ifDescr
+    overrides:
+      ifType:
+        type: EnumAsInfo

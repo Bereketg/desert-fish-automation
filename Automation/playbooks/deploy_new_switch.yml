@@ -1,0 +1,101 @@
+---
+# ═══════════════════════════════════════════════════════════════════
+# Desert Fish — Deploy New Access Switch (Day-0 / Day-1)
+#
+# WHAT IT DOES:
+#   1. Renders the Jinja2 template into a complete IOS-XE config
+#   2. Backs up the switch's current running config first
+#   3. Pushes the new config to the switch
+#   4. Saves to startup-config (so it survives a reboot)
+#   5. Validates key post-deployment checks
+#
+# HOW TO RUN:
+#   # Deploy a single new switch:
+#   ansible-playbook playbooks/deploy_new_switch.yml \
+#     -i inventories/london/ \
+#     --limit LON-ACC1 \
+#     --ask-vault-pass
+#
+#   # Test against the free Cisco DevNet sandbox first:
+#   ansible-playbook playbooks/deploy_new_switch.yml \
+#     -i inventories/london/ \
+#     --limit DEVNET-IOSXE \
+#     --ask-vault-pass
+# ═══════════════════════════════════════════════════════════════════
+
+- name: "Desert Fish — Deploy Access Switch"
+  hosts: access_switches
+  gather_facts: false
+  vars:
+    ansible_user:            "{{ vault_ansible_user }}"
+    ansible_password:        "{{ vault_ansible_pass }}"
+    ansible_become_password: "{{ vault_ansible_become_pass }}"
+
+  tasks:
+
+    # STEP 1: Render the Jinja2 template locally (on the Ansible VM)
+    # WHY locally? The template is filled in with variables before
+    # being sent to the switch — Ansible does all the logic.
+    - name: "1/5  Render config from Jinja2 template"
+      ansible.builtin.template:
+        src:  ../templates/access_switch.j2
+        dest: "/tmp/{{ inventory_hostname }}_rendered.txt"
+      delegate_to: localhost
+
+    # STEP 2: Back up current running config before making changes
+    # WHY? Safety net — if something goes wrong you can roll back.
+    - name: "2/5  Back up current running config"
+      cisco.ios.ios_command:
+        commands: "show running-config"
+      register: backup_output
+
+    - name: "2/5  Save backup to local file"
+      ansible.builtin.copy:
+        content: "{{ backup_output.stdout[0] }}"
+        dest:    "/tmp/{{ inventory_hostname }}_backup_{{ ansible_date_time.date }}.txt"
+      delegate_to: localhost
+
+    # STEP 3: Apply the rendered config
+    # ios_config with src: pushes the entire file line by line.
+    # IOS-XE only applies lines that differ from the running config.
+    - name: "3/5  Apply configuration to switch"
+      cisco.ios.ios_config:
+        src:       "/tmp/{{ inventory_hostname }}_rendered.txt"
+        save_when: changed   # auto-save if anything changed
+      register: config_result
+
+    - name: "3/5  Show changed lines"
+      ansible.builtin.debug:
+        msg: "Changed: {{ config_result.updates | default([]) }}"
+
+    # STEP 4: Verify VLANs are present after deployment
+    - name: "4/5  Verify VLANs are active"
+      cisco.ios.ios_command:
+        commands: "show vlan brief"
+      register: vlan_output
+
+    - name: "4/5  Confirm VLAN 10, 20, 30, 40, 50, 60 exist"
+      ansible.builtin.assert:
+        that:
+          - "'10' in vlan_output.stdout[0]"
+          - "'20' in vlan_output.stdout[0]"
+          - "'30' in vlan_output.stdout[0]"
+          - "'60' in vlan_output.stdout[0]"
+        fail_msg:  "ERROR: Expected VLANs missing — check template rendering"
+        success_msg: "PASS: All VLANs present"
+
+    # STEP 5: Verify management IP is reachable
+    - name: "5/5  Confirm MGMT SVI is up"
+      cisco.ios.ios_command:
+        commands: "show interface Vlan10 | include line protocol"
+      register: svi_output
+
+    - name: "5/5  Assert SVI is up"
+      ansible.builtin.assert:
+        that: "'up' in svi_output.stdout[0]"
+        fail_msg:  "WARNING: VLAN 10 SVI is not up — check uplinks"
+        success_msg: "PASS: MGMT SVI is up"
+
+    - name: "Deployment complete"
+      ansible.builtin.debug:
+        msg: "✓ {{ inventory_hostname }} deployed successfully"

@@ -1,0 +1,40 @@
+# ─── Prometheus scrape configuration ─────────────────────────────
+global:
+  scrape_interval:     60s    # poll every 60 seconds
+  evaluation_interval: 60s
+
+scrape_configs:
+
+  # ── SNMP Exporter — polls switches via SNMPv3 ──────────────────
+  # Prometheus asks the SNMP Exporter to query each switch.
+  # Collects: interface bytes/errors, CPU, memory, STP changes.
+  - job_name: "desert-fish-switches"
+    static_configs:
+      # London access switches
+      - targets: ["10.10.10.51","10.10.10.52","10.10.10.53"]
+        labels:  { site: "london", role: "access" }
+      # London core switches
+      - targets: ["10.10.10.31","10.10.10.32"]
+        labels:  { site: "london", role: "core" }
+      # Paris access switches
+      - targets: ["10.20.10.51","10.20.10.52","10.20.10.53"]
+        labels:  { site: "paris",  role: "access" }
+      # Cairo access switches
+      - targets: ["10.30.10.51","10.30.10.52","10.30.10.53"]
+        labels:  { site: "cairo",  role: "access" }
+    metrics_path: /snmp
+    params:
+      module: [if_mib]          # collects standard interface metrics
+      auth:   [desert_fish_v3]  # SNMPv3 credentials defined in snmp.yml
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label:  __param_target
+      - source_labels: [__param_target]
+        target_label:  instance
+      - target_label: __address__
+        replacement:   snmp-exporter:9116
+
+  # ── Prometheus self-monitoring ─────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

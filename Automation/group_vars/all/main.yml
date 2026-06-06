@@ -1,0 +1,42 @@
+---
+# ═══════════════════════════════════════════════════════════════════
+# Desert Fish — Global Access Switch Variables
+# Applies to ALL access switches across all three sites.
+# Site-specific overrides live in group_vars/london|paris|cairo/
+# ═══════════════════════════════════════════════════════════════════
+
+# ── VLAN definitions ─────────────────────────────────────────────
+vlans:
+  - { id: 10,  name: MGMT            }
+  - { id: 20,  name: DATA            }
+  - { id: 30,  name: VOICE           }
+  - { id: 40,  name: WIRELESS        }
+  - { id: 50,  name: GUEST           }
+  - { id: 60,  name: SERVERS         }
+  - { id: 99,  name: NATIVE_BLACKHOLE }
+
+# ── VLAN IDs used in port configs ────────────────────────────────
+data_vlan:     20
+voice_vlan:    30
+wireless_vlan: 40
+guest_vlan:    50
+native_vlan:   99
+mgmt_vlan:     10
+
+# ── STP ───────────────────────────────────────────────────────────
+# Access switches are always downstream — never root bridge.
+stp_mode: rapid-pvst
+
+# ── SNMPv3 (for Prometheus SNMP Exporter) ────────────────────────
+snmp_user:      DESERT-FISH-MON
+snmp_auth_algo: sha
+snmp_priv_algo: "aes 128"
+
+# ── Local emergency admin account (used if ISE unreachable) ──────
+local_admin_user: netadmin
+
+# ── Ansible connection settings for IOS-XE ───────────────────────
+ansible_network_os:       cisco.ios.ios
+ansible_connection:       network_cli
+ansible_become:           true
+ansible_become_method:    enable

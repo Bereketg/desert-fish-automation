@@ -1,0 +1,124 @@
+---
+# =============================================================================
+# Oxidized — Main Configuration
+# File: ~/.config/oxidized/config  (mounted via Docker volume)
+#
+# WHY OXIDIZED:
+#   Every night (and on-demand) Oxidized SSHs into every switch, pulls
+#   "show running-config", and commits the result to a Git repository.
+#   If a config drifts — accidentally or maliciously — you see it instantly
+#   as a Git diff and can roll back with a single git checkout.
+#
+# HOW DEVICE LIST WORKS:
+#   Primary source  → NetBox API (devices where status=active, role=access-switch
+#                     or core-switch). Oxidized re-reads this every hour so
+#                     adding a device in NetBox automatically adds it here.
+#   Fallback source → router.db (static CSV used during NetBox downtime or
+#                     initial bootstrap before NetBox is populated).
+# =============================================================================
+
+# ── Credentials (shared defaults — per-device overrides possible) ─────────────
+# These match vault_ansible_user / vault_ansible_pass in Ansible Vault.
+# Update them to match whatever you set in your vault.yml.
+username: netadmin
+password: "ChangeMe!Str0ng#SSH"      # REPLACE with vault_ansible_pass value
+model: ios                            # Cisco IOS/IOS-XE model handler
+
+# ── Polling interval ──────────────────────────────────────────────────────────
+# 3600 = every 1 hour. Oxidized will also run immediately at startup.
+interval: 3600
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+use_syslog: false
+log: /home/oxidized/.config/oxidized/oxidized.log
+debug: false
+
+# ── Concurrency ───────────────────────────────────────────────────────────────
+# Poll up to 30 switches simultaneously. Safe for 60 switches at this interval.
+threads: 30
+timeout: 20    # seconds per SSH session
+retries: 3     # retry failed devices up to 3 times before marking as error
+
+# ── REST API (built-in web UI) ─────────────────────────────────────────────────
+# Browse config history at http://<VM2_IP>:8888
+rest: 0.0.0.0:8888
+
+# ── IOS enable password ───────────────────────────────────────────────────────
+vars:
+  enable: "ChangeMe!Str0ng#Enable"   # REPLACE with vault_enable_secret value
+
+# ── Device source: NetBox API ─────────────────────────────────────────────────
+# Oxidized calls this URL, parses the JSON, and maps fields to its internal
+# device list. The `map` block tells Oxidized which JSON key = which attribute.
+#
+# URL breakdown:
+#   /api/dcim/devices/     → NetBox devices endpoint
+#   ?status=active         → only active devices (skip decommissioned)
+#   &limit=200             → get all in one page (matches MAX_PAGE_SIZE above)
+#
+# IMPORTANT: Replace NETBOX_API_TOKEN_HERE with the value of NETBOX_API_TOKEN
+#            from your .env file after first startup.
+source:
+  default: http
+  http:
+    url: http://netbox:8000/api/dcim/devices/?status=active&limit=200
+    scheme: http
+    secure: false
+    map:
+      name:  name                      # Device hostname in NetBox → Oxidized node name
+      model: platform__slug            # platform.slug (e.g. "ios-xe") → model
+      ip:    primary_ip4__address      # primary_ip4.address (CIDR) → SSH target IP
+    headers:
+      X-Auth-Token: "NETBOX_API_TOKEN_HERE"   # REPLACE after first startup
+
+# ── Fallback source: static CSV ───────────────────────────────────────────────
+# Used only when NetBox is unreachable. Keep this file updated as a safety net.
+# Format: hostname:model:ip   (see router.db)
+# Uncomment the block below and comment out the http source above to use it:
+#
+# source:
+#   default: csv
+#   csv:
+#     file: /home/oxidized/.config/oxidized/router.db
+#     delimiter: !ruby/regexp /:/
+#     map:
+#       name:  0
+#       model: 1
+#       ip:    2
+
+# ── Output: Git repository ────────────────────────────────────────────────────
+# Every config poll that returns a changed config commits a new revision.
+# The repo lives in the oxidized-repo Docker volume.
+# To browse history: docker exec -it oxidized git -C ~/oxidized-configs log --oneline
+output:
+  default: git
+  git:
+    user:  Oxidized
+    email: oxidized@desertfish.local
+    repo:  /home/oxidized/oxidized-configs/desert-fish.git
+
+# ── Hooks: notify NetBox on config change ────────────────────────────────────
+# When Oxidized successfully stores a new config version, it POSTs back to
+# NetBox to update the device's "Last Seen" / config_context timestamp.
+# Replace NETBOX_API_TOKEN_HERE with the same token as above.
+hooks:
+  netbox_update:
+    type: gitcrypt         # built-in hook type for NetBox integration
+    events: [post_store]
+    cmd: >
+      curl -s -X PATCH
+      http://netbox:8000/api/dcim/devices/?name={{ job.node.name }}&format=json
+      -H "X-Auth-Token: NETBOX_API_TOKEN_HERE"
+      -H "Content-Type: application/json"
+      -d '{"custom_fields": {"last_oxidized_backup": "{{ job.time }}"}}'
+
+# ── Model overrides (per-device) ──────────────────────────────────────────────
+# If some devices need different credentials or models, add them here.
+# Example:
+# groups:
+#   london:
+#     username: netadmin
+#     password: "ChangeMe!Str0ng#SSH"
+#   cairo:
+#     username: netadmin
+#     password: "ChangeMe!Str0ng#SSH"

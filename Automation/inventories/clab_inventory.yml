@@ -1,0 +1,90 @@
+---
+# =============================================================================
+# ContainerLab Static Inventory
+# Use this when running Ansible playbooks against the digital twin lab.
+# Switch back to netbox_inventory.yml when targeting production.
+#
+# Usage:
+#   ansible-playbook -i Automation/inventories/clab_inventory.yml \
+#                    Automation/playbooks/deploy_new_switch.yml \
+#                    --vault-password-file ~/.vault_pass
+# =============================================================================
+
+all:
+  vars:
+    ansible_network_os:      cisco.ios.ios
+    ansible_connection:      network_cli
+    ansible_become:          true
+    ansible_become_method:   enable
+    ansible_user:            "{{ vault_ansible_user }}"
+    ansible_password:        "{{ vault_ansible_pass }}"
+    ansible_become_password: "{{ vault_enable_secret }}"
+
+  children:
+
+    london:
+      vars:
+        site_name:      London
+        site_oct:       10
+        ise_vm1_ip:     "10.10.10.91"
+        ise_vm2_ip:     "10.10.10.92"
+        ntp_primary:    "10.10.10.81"
+        ntp_secondary:  "10.10.10.82"
+        syslog_server:  "10.10.10.110"
+        mgmt_gateway:   "10.10.10.1"
+        dns_primary:    "10.10.10.101"
+        dns_secondary:  "10.10.10.102"
+        domain_name:    "local.desertfish.com"
+      hosts:
+        LON-CORE1:  { ansible_host: 172.20.20.11, hostname: LON-CORE1, mgmt_ip: "10.10.10.11", mgmt_mask: "255.255.255.0" }
+        LON-CORE2:  { ansible_host: 172.20.20.12, hostname: LON-CORE2, mgmt_ip: "10.10.10.12", mgmt_mask: "255.255.255.0" }
+        LON-ACC1:   { ansible_host: 172.20.20.21, hostname: LON-ACC1,  mgmt_ip: "10.10.10.51", mgmt_mask: "255.255.255.0" }
+        LON-ACC2:   { ansible_host: 172.20.20.22, hostname: LON-ACC2,  mgmt_ip: "10.10.10.52", mgmt_mask: "255.255.255.0" }
+        LON-ACC3:   { ansible_host: 172.20.20.23, hostname: LON-ACC3,  mgmt_ip: "10.10.10.53", mgmt_mask: "255.255.255.0" }
+
+    paris:
+      vars:
+        site_name:      Paris
+        site_oct:       20
+        ise_vm1_ip:     "10.20.10.91"
+        ise_vm2_ip:     "10.20.10.92"
+        ntp_primary:    "10.20.10.81"
+        ntp_secondary:  "10.20.10.82"
+        syslog_server:  "10.20.10.110"
+        mgmt_gateway:   "10.20.10.1"
+        dns_primary:    "10.20.10.101"
+        dns_secondary:  "10.20.10.102"
+        domain_name:    "local.desertfish.com"
+      hosts:
+        PAR-CORE1:  { ansible_host: 172.20.20.41, hostname: PAR-CORE1, mgmt_ip: "10.20.10.11", mgmt_mask: "255.255.255.0" }
+        PAR-CORE2:  { ansible_host: 172.20.20.42, hostname: PAR-CORE2, mgmt_ip: "10.20.10.12", mgmt_mask: "255.255.255.0" }
+        PAR-ACC1:   { ansible_host: 172.20.20.51, hostname: PAR-ACC1,  mgmt_ip: "10.20.10.51", mgmt_mask: "255.255.255.0" }
+        PAR-ACC2:   { ansible_host: 172.20.20.52, hostname: PAR-ACC2,  mgmt_ip: "10.20.10.52", mgmt_mask: "255.255.255.0" }
+        PAR-ACC3:   { ansible_host: 172.20.20.53, hostname: PAR-ACC3,  mgmt_ip: "10.20.10.53", mgmt_mask: "255.255.255.0" }
+
+    cairo:
+      vars:
+        site_name:      Cairo
+        site_oct:       30
+        ise_vm1_ip:     "10.30.10.91"
+        ise_vm2_ip:     "10.30.10.92"
+        ntp_primary:    "10.30.10.81"
+        ntp_secondary:  "10.30.10.82"
+        syslog_server:  "10.30.10.110"
+        mgmt_gateway:   "10.30.10.1"
+        dns_primary:    "10.30.10.101"
+        dns_secondary:  "10.30.10.102"
+        domain_name:    "local.desertfish.com"
+      hosts:
+        CAI-CORE1:  { ansible_host: 172.20.20.71, hostname: CAI-CORE1, mgmt_ip: "10.30.10.11", mgmt_mask: "255.255.255.0" }
+        CAI-CORE2:  { ansible_host: 172.20.20.72, hostname: CAI-CORE2, mgmt_ip: "10.30.10.12", mgmt_mask: "255.255.255.0" }
+        CAI-ACC1:   { ansible_host: 172.20.20.81, hostname: CAI-ACC1,  mgmt_ip: "10.30.10.51", mgmt_mask: "255.255.255.0" }
+        CAI-ACC2:   { ansible_host: 172.20.20.82, hostname: CAI-ACC2,  mgmt_ip: "10.30.10.52", mgmt_mask: "255.255.255.0" }
+        CAI-ACC3:   { ansible_host: 172.20.20.83, hostname: CAI-ACC3,  mgmt_ip: "10.30.10.53", mgmt_mask: "255.255.255.0" }
+
+    # Convenience group — all access switches across all sites
+    access_switches:
+      children:
+        london:
+        paris:
+        cairo:

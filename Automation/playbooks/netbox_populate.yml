@@ -1,0 +1,312 @@
+---
+# =============================================================================
+# Playbook: netbox_populate.yml
+# Purpose:  Seeds NetBox with the complete Desert Fish network inventory.
+#           Run this ONCE after VM2 is up to turn NetBox from empty into your
+#           live source of truth. Safe to re-run — all tasks are idempotent
+#           (state: present means "create if missing, skip if already there").
+#
+# What it creates:
+#   1. Regions: Europe, Africa
+#   2. Sites: London, Paris, Cairo (with addresses and ASNs)
+#   3. VLANs: 10 MGMT, 20 DATA, 30 VOICE, 40 WIRELESS, 50 GUEST, 60 SERVERS, 99 NATIVE
+#   4. IP Prefixes: 10.10.0.0/16, 10.20.0.0/16, 10.30.0.0/16
+#   5. Device Roles: access-switch, core-switch
+#   6. Manufacturer: Cisco
+#   7. Device Type: Cisco Catalyst 9300-48P (placeholder — adjust to your model)
+#   8. Platform: ios-xe (links device type to Oxidized model and Ansible os)
+#   9. Devices: All 60 access switches across 3 sites with management IPs
+#  10. Custom Field: last_oxidized_backup (timestamp Oxidized writes back)
+#
+# Prerequisites:
+#   ansible-galaxy collection install netbox.netbox
+#   pip install pynetbox --break-system-packages
+#
+# Usage:
+#   ansible-playbook Automation/playbooks/netbox_populate.yml \
+#     -e "netbox_url=http://YOUR_VM2_IP:8000" \
+#     -e "netbox_token=YOUR_NETBOX_API_TOKEN" \
+#     --vault-password-file ~/.vault_pass
+# =============================================================================
+
+- name: Populate NetBox — Desert Fish Network Inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Override these on the command line with -e or store in vault.yml
+    netbox_url:   "http://YOUR_VM2_IP:8000"    # REPLACE
+    netbox_token: "{{ vault_netbox_token }}"   # from vault.yml
+
+    # ── VLAN definitions (matches group_vars/all/main.yml) ──────────────────
+    vlans:
+      - { vid: 10,  name: MGMT }
+      - { vid: 20,  name: DATA }
+      - { vid: 30,  name: VOICE }
+      - { vid: 40,  name: WIRELESS }
+      - { vid: 50,  name: GUEST }
+      - { vid: 60,  name: SERVERS }
+      - { vid: 99,  name: NATIVE_BLACKHOLE }
+      - { vid: 999, name: UNUSED_SHUTDOWN }
+
+    # ── Site definitions ────────────────────────────────────────────────────
+    sites:
+      - name:         London
+        slug:         london
+        region:       Europe
+        facility:     "Equinix LD8"
+        description:  "Desert Fish HQ — London"
+        mgmt_prefix:  "10.10.0.0/16"
+        mgmt_first_sw: "10.10.10.51"
+        site_oct:     10
+        num_switches: 20
+
+      - name:         Paris
+        slug:         paris
+        region:       Europe
+        facility:     "Interxion CDG2"
+        description:  "Desert Fish — Paris"
+        mgmt_prefix:  "10.20.0.0/16"
+        mgmt_first_sw: "10.20.10.51"
+        site_oct:     20
+        num_switches: 20
+
+      - name:         Cairo
+        slug:         cairo
+        region:       Africa
+        facility:     "Raya Data Centre"
+        description:  "Desert Fish — Cairo"
+        mgmt_prefix:  "10.30.0.0/16"
+        mgmt_first_sw: "10.30.10.51"
+        site_oct:     30
+        num_switches: 20
+
+  tasks:
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 1. Custom Fields
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create custom field — last_oxidized_backup
+      netbox.netbox.netbox_custom_field:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name:          last_oxidized_backup
+          label:         "Last Oxidized Backup"
+          type:          date-time
+          content_types: ["dcim.device"]
+          required:      false
+          description:   "Timestamp of last successful Oxidized config backup"
+        state: present
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 2. Regions
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create regions
+      netbox.netbox.netbox_region:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name: "{{ item }}"
+        state: present
+      loop:
+        - Europe
+        - Africa
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 3. Sites
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create sites
+      netbox.netbox.netbox_site:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name:        "{{ item.name }}"
+          slug:        "{{ item.slug }}"
+          region:      "{{ item.region }}"
+          facility:    "{{ item.facility }}"
+          description: "{{ item.description }}"
+          status:      active
+        state: present
+      loop: "{{ sites }}"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 4. VLANs (created at all three sites)
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create VLANs at each site
+      netbox.netbox.netbox_vlan:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name:   "{{ vlan.name }}"
+          vid:    "{{ vlan.vid }}"
+          site:   "{{ site.name }}"
+          status: active
+        state: present
+      loop: "{{ sites | product(vlans) | list }}"
+      loop_control:
+        loop_var: outer_item
+      vars:
+        site: "{{ outer_item[0] }}"
+        vlan: "{{ outer_item[1] }}"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 5. IP Prefixes (management supernets per site)
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create management IP prefixes
+      netbox.netbox.netbox_prefix:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          prefix:      "{{ item.mgmt_prefix }}"
+          site:        "{{ item.name }}"
+          status:      active
+          description: "{{ item.name }} management supernet"
+        state: present
+      loop: "{{ sites }}"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 6. Device Roles
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create device roles
+      netbox.netbox.netbox_device_role:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name:  "{{ item.name }}"
+          slug:  "{{ item.slug }}"
+          color: "{{ item.color }}"
+          vm_role: false
+        state: present
+      loop:
+        - { name: "Access Switch",  slug: "access-switch", color: "2196f3" }
+        - { name: "Core Switch",    slug: "core-switch",   color: "4caf50" }
+        - { name: "Firewall",       slug: "firewall",      color: "f44336" }
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 7. Manufacturer
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create Cisco manufacturer
+      netbox.netbox.netbox_manufacturer:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name: Cisco
+          slug: cisco
+        state: present
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 8. Platform (IOS-XE — links to Oxidized model and Ansible network_os)
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create IOS-XE platform
+      netbox.netbox.netbox_platform:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name:             "IOS-XE"
+          slug:             "ios-xe"
+          manufacturer:     "Cisco"
+          # napalm_driver is what Oxidized maps to its model handler ("ios")
+          napalm_driver:    "ios"
+        state: present
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 9. Device Type (adjust model name/part number to your actual hardware)
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create Cisco Catalyst 9300-48P device type
+      netbox.netbox.netbox_device_type:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          manufacturer: Cisco
+          model:        "Catalyst 9300-48P"
+          slug:         "catalyst-9300-48p"
+          part_number:  "C9300-48P"
+          u_height:     1
+          is_full_depth: true
+        state: present
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 10. Devices — all 60 access switches
+    #     Uses Ansible's range() to generate switch numbers 1–20 per site.
+    #     Management IP = site_first_sw_base + (switch_number - 1)
+    #     Example: LON-ACC1 = 10.10.10.51, LON-ACC2 = 10.10.10.52, etc.
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create access switch devices
+      netbox.netbox.netbox_device:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name:         "{{ site.slug[:3] | upper }}-ACC{{ sw_num }}"
+          device_type:  "Catalyst 9300-48P"
+          device_role:  "Access Switch"
+          site:         "{{ site.name }}"
+          platform:     "IOS-XE"
+          status:       active
+          comments:     "Deployed by Ansible — {{ site.name }} access layer"
+        state: present
+      loop: "{{ sites | product(range(1, 21) | list) | list }}"
+      loop_control:
+        loop_var: outer_item
+        label: "{{ site.slug[:3] | upper }}-ACC{{ sw_num }}"
+      vars:
+        site:   "{{ outer_item[0] }}"
+        sw_num: "{{ outer_item[1] }}"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 11. Management IPs — assign primary IPv4 to each switch
+    #     IP = 10.<site_oct>.10.<50 + switch_number>
+    #     e.g. London switch 1 = 10.10.10.51, Paris switch 3 = 10.20.10.53
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Create and assign management IPs
+      netbox.netbox.netbox_ip_address:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          address:     "10.{{ site.site_oct }}.10.{{ 50 + sw_num | int }}/24"
+          status:      active
+          dns_name:    "{{ site.slug[:3] | lower }}-acc{{ sw_num }}.mgmt.desertfish.local"
+          description: "Management IP — {{ site.slug[:3] | upper }}-ACC{{ sw_num }}"
+          assigned_object_type: dcim.device
+          assigned_object:
+            name: "{{ site.slug[:3] | upper }}-ACC{{ sw_num }}"
+        state: present
+      loop: "{{ sites | product(range(1, 21) | list) | list }}"
+      loop_control:
+        loop_var: outer_item
+        label: "10.{{ site.site_oct }}.10.{{ 50 + sw_num | int }}/24"
+      vars:
+        site:   "{{ outer_item[0] }}"
+        sw_num: "{{ outer_item[1] }}"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 12. Set primary IP on each device
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Set primary IPv4 on each device
+      netbox.netbox.netbox_device:
+        netbox_url:   "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          name:        "{{ site.slug[:3] | upper }}-ACC{{ sw_num }}"
+          primary_ip4: "10.{{ site.site_oct }}.10.{{ 50 + sw_num | int }}/24"
+        state: present
+      loop: "{{ sites | product(range(1, 21) | list) | list }}"
+      loop_control:
+        loop_var: outer_item
+        label: "{{ site.slug[:3] | upper }}-ACC{{ sw_num }}"
+      vars:
+        site:   "{{ outer_item[0] }}"
+        sw_num: "{{ outer_item[1] }}"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Summary
+    # ─────────────────────────────────────────────────────────────────────────
+    - name: Print completion summary
+      ansible.builtin.debug:
+        msg:
+          - "NetBox population complete!"
+          - "Devices created: 60 access switches across London, Paris, Cairo"
+          - "Next step: restart Oxidized so it reads the new device list:"
+          - "  docker compose -f Automation/vm2-setup/docker-compose.yml restart oxidized"
+          - "Then open Oxidized UI to confirm all 60 switches are being polled."

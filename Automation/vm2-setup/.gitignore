@@ -1,0 +1,6 @@
+# Secrets — NEVER commit these
+.env
+
+# Oxidized writes live configs and Git objects here at runtime
+oxidized/logs/
+oxidized/*.log

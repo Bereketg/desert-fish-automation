@@ -1,0 +1,48 @@
+{
+  // ============================================================================
+  // Desert Fish — Recommended VS Code Extensions
+  // ============================================================================
+  // When you open this folder in VS Code it will prompt:
+  //   "This workspace has extension recommendations. Install all?"
+  //   → Click "Install All" on both Macs.
+  //
+  // IMPORTANT: The Remote SSH extensions (top section) install on your LOCAL Mac.
+  //            The Ansible/YAML/Python extensions install on ORACLE VM1 when you
+  //            connect via Remote SSH. VS Code handles this automatically.
+  // ============================================================================
+  "recommendations": [
+
+    // ── Remote Development (install locally on Mac) ───────────────────────────
+    "ms-vscode-remote.remote-ssh",
+    "ms-vscode-remote.remote-explorer",
+
+    // ── Git and GitHub ─────────────────────────────────────────────────────────
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github",
+
+    // ── Network Automation (install on Remote VM1 via Remote SSH) ─────────────
+    "redhat.ansible",
+    "samuelcolvin.jinjahtml",
+
+    // ── Data Formats ───────────────────────────────────────────────────────────
+    "redhat.vscode-yaml",
+    "tamasfe.even-better-toml",
+
+    // ── Python ─────────────────────────────────────────────────────────────────
+    "ms-python.python",
+    "ms-python.pylint",
+    "ms-python.black-formatter",
+
+    // ── Docker ─────────────────────────────────────────────────────────────────
+    "ms-azuretools.vscode-docker",
+
+    // ── Code Quality ───────────────────────────────────────────────────────────
+    "usernamehw.errorlens",
+    "oderwat.indent-rainbow",
+    "aaron-bond.better-comments",
+    "shardulm94.trailing-spaces",
+
+    // ── Markdown ───────────────────────────────────────────────────────────────
+    "yzhang.markdown-all-in-one"
+  ]
+}

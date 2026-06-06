@@ -1,0 +1,83 @@
+---
+# ═══════════════════════════════════════════════════════════════════
+# Desert Fish — London Access Switch 1 (LON-ACC1)
+# Physical location: Floor 1, Rack A
+# Uplinks: Gi1/0/1 → LON-CORE1, Gi1/0/2 → LON-CORE2
+# ═══════════════════════════════════════════════════════════════════
+
+hostname:         LON-ACC1
+mgmt_ip:          "10.10.10.51"
+mgmt_mask:        "255.255.255.0"
+ansible_host:     "10.10.10.51"
+
+# ── Uplink ports (trunk to Core switches) ────────────────────────
+uplink_core1:
+  port:        GigabitEthernet1/0/1
+  description: "UPLINK-TO-LON-CORE1-Gi1/0/21"
+
+uplink_core2:
+  port:        GigabitEthernet1/0/2
+  description: "UPLINK-TO-LON-CORE2-Gi1/0/21"
+
+# ── Access port definitions ───────────────────────────────────────
+# Each port entry:
+#   name        - IOS interface name
+#   description - Label shown in 'show interface'
+#   type        - data | data_voice | ap
+#   dot1x       - true = 802.1X + MAB enforced
+#   data_vlan   - overrides global data_vlan (optional)
+access_ports:
+  - name: GigabitEthernet1/0/3
+    description: "PC-FLOOR1-DESK-01"
+    type: data_voice
+    dot1x: true
+
+  - name: GigabitEthernet1/0/4
+    description: "PC-FLOOR1-DESK-02"
+    type: data_voice
+    dot1x: true
+
+  - name: GigabitEthernet1/0/5
+    description: "PC-FLOOR1-DESK-03"
+    type: data_voice
+    dot1x: true
+
+  - name: GigabitEthernet1/0/6
+    description: "PC-FLOOR1-DESK-04"
+    type: data_voice
+    dot1x: true
+
+  - name: GigabitEthernet1/0/20
+    description: "IP-PHONE-RECEPTION"
+    type: data_voice
+    dot1x: true
+
+  - name: GigabitEthernet1/0/23
+    description: "AP-FLOOR1-ZONE-A"
+    type: ap
+    dot1x: false
+    data_vlan: 40
+
+  - name: GigabitEthernet1/0/24
+    description: "AP-FLOOR1-ZONE-B"
+    type: ap
+    dot1x: false
+    data_vlan: 40
+
+# ── Ports to shut down (unused) ───────────────────────────────────
+unused_ports:
+  - GigabitEthernet1/0/7
+  - GigabitEthernet1/0/8
+  - GigabitEthernet1/0/9
+  - GigabitEthernet1/0/10
+  - GigabitEthernet1/0/11
+  - GigabitEthernet1/0/12
+  - GigabitEthernet1/0/13
+  - GigabitEthernet1/0/14
+  - GigabitEthernet1/0/15
+  - GigabitEthernet1/0/16
+  - GigabitEthernet1/0/17
+  - GigabitEthernet1/0/18
+  - GigabitEthernet1/0/19
+  - GigabitEthernet1/0/21
+  - GigabitEthernet1/0/22

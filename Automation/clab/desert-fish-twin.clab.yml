@@ -1,0 +1,212 @@
+# =============================================================================
+# ContainerLab — Desert Fish Digital Twin Topology
+# File: Automation/clab/desert-fish-twin.clab.yml
+#
+# WHY CONTAINERLAB:
+#   ContainerLab defines your entire network lab as a YAML file that lives in
+#   Git alongside your Ansible code. Spin up the full topology with one command,
+#   test your Ansible playbooks against it, then tear it down. Treat it exactly
+#   like a unit test suite — but for network configs.
+#
+# REQUIREMENTS (Hetzner bare-metal x86 server):
+#   sudo apt-get install -y docker.io
+#   bash -c "$(curl -sL https://get.containerlab.dev)"
+#
+# IOS-XE IMAGES (vrnetlab):
+#   ContainerLab uses vrnetlab to wrap Cisco IOS-XE QEMU images in Docker.
+#   You must supply your own IOS-XE image (requires Cisco CCO account).
+#   Steps:
+#     1. Download: iosxe-universalk9.17.06.05.bin from software.cisco.com
+#     2. git clone https://github.com/hellt/vrnetlab
+#     3. cp iosxe-universalk9.17.06.05.bin vrnetlab/vr-xevm/
+#     4. cd vrnetlab/vr-xevm && make
+#     # This builds the Docker image: vrnetlab/vr-xevm:17.06.05
+#
+# USAGE:
+#   # Start the full lab (takes ~15 min for IOS-XE to boot all nodes):
+#   sudo containerlab deploy -t desert-fish-twin.clab.yml
+#
+#   # List running nodes and their management IPs:
+#   sudo containerlab inspect -t desert-fish-twin.clab.yml
+#
+#   # Run Ansible against the lab (uses clab management IPs):
+#   ansible-playbook -i Automation/inventories/clab_inventory.yml \
+#                    Automation/playbooks/deploy_new_switch.yml
+#
+#   # Destroy the lab (stops and removes all containers):
+#   sudo containerlab destroy -t desert-fish-twin.clab.yml
+#
+# RESOURCE ESTIMATE (Hetzner server):
+#   Each IOS-XE vrnetlab node: ~1 GB RAM, 1 OCPU
+#   Full topology (26 nodes):  ~26 GB RAM recommended
+#   Recommended server:        64 GB RAM, 8+ cores
+#   Minimum viable (12 nodes): 32 GB RAM (partial topology — see comments below)
+#
+# TIP: Start with the "partial" topology (London only, 7 nodes) to validate
+#      your Ansible playbooks before scaling to the full 26-node twin.
+# =============================================================================
+
+name: desert-fish-twin
+
+mgmt:
+  # ContainerLab creates a dedicated Docker bridge for management.
+  # All nodes get a management IP in this range — Ansible uses these to connect.
+  network: clab-mgmt
+  ipv4-subnet: 172.20.20.0/24
+
+topology:
+
+  # ── Default node settings (applies to ALL nodes unless overridden) ─────────
+  defaults:
+    kind: vr-xevm
+    image: vrnetlab/vr-xevm:17.06.05    # REPLACE with your actual built image tag
+    startup-config: ../templates/clab_startup.j2   # minimal SSH + MGMT config
+
+  nodes:
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LONDON SITE  (10.10.x.x)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    LON-CORE1:
+      mgmt-ipv4: 172.20.20.11
+      env:
+        HOSTNAME: LON-CORE1
+
+    LON-CORE2:
+      mgmt-ipv4: 172.20.20.12
+      env:
+        HOSTNAME: LON-CORE2
+
+    LON-ACC1:
+      mgmt-ipv4: 172.20.20.21
+      env:
+        HOSTNAME: LON-ACC1
+
+    LON-ACC2:
+      mgmt-ipv4: 172.20.20.22
+      env:
+        HOSTNAME: LON-ACC2
+
+    LON-ACC3:
+      mgmt-ipv4: 172.20.20.23
+      env:
+        HOSTNAME: LON-ACC3
+
+    # Add LON-ACC4 through LON-ACC20 following the same pattern.
+    # Each gets mgmt-ipv4: 172.20.20.<20+N> where N is the switch number.
+    # Commented out to keep resource usage manageable for initial testing:
+    #
+    # LON-ACC4:
+    #   mgmt-ipv4: 172.20.20.24
+    #   env:
+    #     HOSTNAME: LON-ACC4
+    # ... (repeat through LON-ACC20 at 172.20.20.40)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PARIS SITE  (10.20.x.x)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    PAR-CORE1:
+      mgmt-ipv4: 172.20.20.41
+      env:
+        HOSTNAME: PAR-CORE1
+
+    PAR-CORE2:
+      mgmt-ipv4: 172.20.20.42
+      env:
+        HOSTNAME: PAR-CORE2
+
+    PAR-ACC1:
+      mgmt-ipv4: 172.20.20.51
+      env:
+        HOSTNAME: PAR-ACC1
+
+    PAR-ACC2:
+      mgmt-ipv4: 172.20.20.52
+      env:
+        HOSTNAME: PAR-ACC2
+
+    PAR-ACC3:
+      mgmt-ipv4: 172.20.20.53
+      env:
+        HOSTNAME: PAR-ACC3
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CAIRO SITE  (10.30.x.x)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    CAI-CORE1:
+      mgmt-ipv4: 172.20.20.71
+      env:
+        HOSTNAME: CAI-CORE1
+
+    CAI-CORE2:
+      mgmt-ipv4: 172.20.20.72
+      env:
+        HOSTNAME: CAI-CORE2
+
+    CAI-ACC1:
+      mgmt-ipv4: 172.20.20.81
+      env:
+        HOSTNAME: CAI-ACC1
+
+    CAI-ACC2:
+      mgmt-ipv4: 172.20.20.82
+      env:
+        HOSTNAME: CAI-ACC2
+
+    CAI-ACC3:
+      mgmt-ipv4: 172.20.20.83
+      env:
+        HOSTNAME: CAI-ACC3
+
+  # ── Links ──────────────────────────────────────────────────────────────────
+  # Each link creates a virtual Ethernet cable between two nodes.
+  # The interface names match what's in your Jinja2 template (GigabitEthernet).
+  # e1 = GigabitEthernet1/0/1, e2 = GigabitEthernet1/0/2, etc.
+  #
+  # Topology mirrors production:
+  #   Access switches uplink to BOTH core switches (dual uplinks for redundancy).
+  #   Core switches are connected to each other (VSS/StackWise Virtual in prod).
+  links:
+
+    # ── London: Core–Core link ──────────────────────────────────────────────
+    - endpoints: ["LON-CORE1:e1", "LON-CORE2:e1"]
+
+    # ── London: Access → Core1 uplinks ─────────────────────────────────────
+    - endpoints: ["LON-ACC1:e1", "LON-CORE1:e2"]
+    - endpoints: ["LON-ACC2:e1", "LON-CORE1:e3"]
+    - endpoints: ["LON-ACC3:e1", "LON-CORE1:e4"]
+    # (repeat for LON-ACC4 through LON-ACC20 on LON-CORE1:e5 through e21)
+
+    # ── London: Access → Core2 uplinks (redundant) ─────────────────────────
+    - endpoints: ["LON-ACC1:e2", "LON-CORE2:e2"]
+    - endpoints: ["LON-ACC2:e2", "LON-CORE2:e3"]
+    - endpoints: ["LON-ACC3:e2", "LON-CORE2:e4"]
+
+    # ── Paris: Core–Core link ───────────────────────────────────────────────
+    - endpoints: ["PAR-CORE1:e1", "PAR-CORE2:e1"]
+
+    # ── Paris: Access → Core1 uplinks ──────────────────────────────────────
+    - endpoints: ["PAR-ACC1:e1", "PAR-CORE1:e2"]
+    - endpoints: ["PAR-ACC2:e1", "PAR-CORE1:e3"]
+    - endpoints: ["PAR-ACC3:e1", "PAR-CORE1:e4"]
+
+    # ── Paris: Access → Core2 uplinks ──────────────────────────────────────
+    - endpoints: ["PAR-ACC1:e2", "PAR-CORE2:e2"]
+    - endpoints: ["PAR-ACC2:e2", "PAR-CORE2:e3"]
+    - endpoints: ["PAR-ACC3:e2", "PAR-CORE2:e4"]
+
+    # ── Cairo: Core–Core link ───────────────────────────────────────────────
+    - endpoints: ["CAI-CORE1:e1", "CAI-CORE2:e1"]
+
+    # ── Cairo: Access → Core1 uplinks ──────────────────────────────────────
+    - endpoints: ["CAI-ACC1:e1", "CAI-CORE1:e2"]
+    - endpoints: ["CAI-ACC2:e1", "CAI-CORE1:e3"]
+    - endpoints: ["CAI-ACC3:e1", "CAI-CORE1:e4"]
+
+    # ── Cairo: Access → Core2 uplinks ──────────────────────────────────────
+    - endpoints: ["CAI-ACC1:e2", "CAI-CORE2:e2"]
+    - endpoints: ["CAI-ACC2:e2", "CAI-CORE2:e3"]
+    - endpoints: ["CAI-ACC3:e2", "CAI-CORE2:e4"]

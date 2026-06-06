@@ -1,0 +1,180 @@
+# =============================================================================
+# Desert Fish — VM2: Network Source of Truth + Config Backup
+# Stack: NetBox 3.7 + Oxidized + PostgreSQL 15 + Redis 7
+#
+# WHY THIS STACK:
+#   NetBox  → Single source of truth for all devices, IPs, VLANs, racks, cables.
+#             Ansible queries it dynamically instead of reading static host files.
+#   Oxidized→ Pulls running config from every switch on a schedule, commits to
+#             Git. You get version history + instant diff alerts on any change.
+#   Postgres→ NetBox's relational database.
+#   Redis   → NetBox uses two Redis instances: one for caching, one for the
+#             background task queue (webhooks, reports, jobs).
+#
+# USAGE:
+#   1. Copy .env.example to .env and fill in all secrets BEFORE starting.
+#   2. docker compose up -d
+#   3. NetBox UI → http://<VM2_IP>:8000  (admin / value from NETBOX_SUPERUSER_PASSWORD)
+#   4. Oxidized UI → http://<VM2_IP>:8888
+# =============================================================================
+
+version: "3.8"
+
+services:
+
+  # ── PostgreSQL 15 ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: netbox-postgres
+    env_file: netbox/env/postgres.env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis — task queue ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: netbox-redis
+    command: >
+      redis-server
+      --requirepass "${REDIS_PASSWORD}"
+      --save 60 1
+      --loglevel warning
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis — cache ──────────────────────────────────────────────────────────
+  redis-cache:
+    image: redis:7-alpine
+    container_name: netbox-redis-cache
+    command: >
+      redis-server
+      --requirepass "${REDIS_CACHE_PASSWORD}"
+      --save ""
+      --loglevel warning
+    volumes:
+      - redis-cache-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_CACHE_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── NetBox web ─────────────────────────────────────────────────────────────
+  netbox:
+    image: netboxcommunity/netbox:v3.7-2.9.1
+    container_name: netbox-web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+    env_file:
+      - netbox/env/netbox.env
+      - netbox/env/postgres.env
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_CACHE_PASSWORD: "${REDIS_CACHE_PASSWORD}"
+      SECRET_KEY: "${NETBOX_SECRET_KEY}"
+      SUPERUSER_PASSWORD: "${NETBOX_SUPERUSER_PASSWORD}"
+      SUPERUSER_API_TOKEN: "${NETBOX_API_TOKEN}"
+    volumes:
+      - netbox-media:/opt/netbox/netbox/media
+      - netbox-reports:/opt/netbox/netbox/reports
+      - netbox-scripts:/opt/netbox/netbox/scripts
+      - ./netbox/configuration/extra.py:/etc/netbox/config/extra.py:ro
+    ports:
+      - "8000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+  # ── NetBox background worker ───────────────────────────────────────────────
+  # Handles webhooks, reports, background jobs (e.g. auto-triggering Oxidized
+  # when a device record changes in NetBox).
+  netbox-worker:
+    image: netboxcommunity/netbox:v3.7-2.9.1
+    container_name: netbox-worker
+    depends_on:
+      netbox:
+        condition: service_healthy
+    env_file:
+      - netbox/env/netbox.env
+      - netbox/env/postgres.env
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_CACHE_PASSWORD: "${REDIS_CACHE_PASSWORD}"
+      SECRET_KEY: "${NETBOX_SECRET_KEY}"
+    volumes:
+      - netbox-media:/opt/netbox/netbox/media
+      - netbox-scripts:/opt/netbox/netbox/scripts
+      - ./netbox/configuration/extra.py:/etc/netbox/config/extra.py:ro
+    command: /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py rqworker
+    restart: unless-stopped
+
+  # ── NetBox housekeeping (nightly cleanup jobs) ─────────────────────────────
+  netbox-housekeeping:
+    image: netboxcommunity/netbox:v3.7-2.9.1
+    container_name: netbox-housekeeping
+    depends_on:
+      netbox:
+        condition: service_healthy
+    env_file:
+      - netbox/env/netbox.env
+      - netbox/env/postgres.env
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_CACHE_PASSWORD: "${REDIS_CACHE_PASSWORD}"
+      SECRET_KEY: "${NETBOX_SECRET_KEY}"
+    volumes:
+      - ./netbox/configuration/extra.py:/etc/netbox/config/extra.py:ro
+    command: /opt/netbox/housekeeping.sh
+    restart: unless-stopped
+
+  # ── Oxidized ───────────────────────────────────────────────────────────────
+  # Config backup engine. Polls every switch via SSH every hour, pulls running
+  # config, commits to a local Git repo. A diff alert fires on any change.
+  # Source of device list: NetBox API (falls back to router.db if NetBox down).
+  oxidized:
+    image: oxidized/oxidized:latest
+    container_name: oxidized
+    depends_on:
+      netbox:
+        condition: service_healthy
+    environment:
+      CONFIG_RELOAD_INTERVAL: "3600"
+      OXIDIZED_HOME: /home/oxidized/.config/oxidized
+    volumes:
+      - ./oxidized:/home/oxidized/.config/oxidized:rw
+      - oxidized-repo:/home/oxidized/oxidized-configs:rw
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+  redis-data:
+  redis-cache-data:
+  netbox-media:
+  netbox-reports:
+  netbox-scripts:
+  oxidized-repo:   # Git repo where Oxidized commits device configs
