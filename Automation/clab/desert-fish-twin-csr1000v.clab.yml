@@ -142,43 +142,51 @@ topology:
   #   GigabitEthernet1 = first data port  (Core-Core or Acc→Core1 uplink)
   #   GigabitEthernet2 = second data port (Acc→Core2 redundant uplink)
   #   GigabitEthernet3/4 = additional core ports for access switch uplinks
+  # ── Interface numbering note ──────────────────────────────────────────────
+  # CSR1000v in ContainerLab: GigabitEthernet1 = management (eth0, reserved).
+  # Data interfaces must start from GigabitEthernet2 (maps to eth1 internally).
+  # Index formula: ethN = GigabitEthernetN - 1  →  minimum usable = Gi2 (eth1)
+  #
+  # Per-node interface assignment:
+  #   Core switches : Gi2=Core-Core  Gi3/4/5=Access uplinks
+  #   Access switches: Gi2=uplink→Core1  Gi3=uplink→Core2
   links:
 
     # ── London: Core–Core link ──────────────────────────────────────────────
-    - endpoints: ["LON-CORE1:GigabitEthernet1", "LON-CORE2:GigabitEthernet1"]
+    - endpoints: ["LON-CORE1:GigabitEthernet2", "LON-CORE2:GigabitEthernet2"]
 
     # ── London: Access → Core1 uplinks ─────────────────────────────────────
-    - endpoints: ["LON-ACC1:GigabitEthernet1", "LON-CORE1:GigabitEthernet2"]
-    - endpoints: ["LON-ACC2:GigabitEthernet1", "LON-CORE1:GigabitEthernet3"]
-    - endpoints: ["LON-ACC3:GigabitEthernet1", "LON-CORE1:GigabitEthernet4"]
+    - endpoints: ["LON-ACC1:GigabitEthernet2", "LON-CORE1:GigabitEthernet3"]
+    - endpoints: ["LON-ACC2:GigabitEthernet2", "LON-CORE1:GigabitEthernet4"]
+    - endpoints: ["LON-ACC3:GigabitEthernet2", "LON-CORE1:GigabitEthernet5"]
 
     # ── London: Access → Core2 uplinks (redundant) ─────────────────────────
-    - endpoints: ["LON-ACC1:GigabitEthernet2", "LON-CORE2:GigabitEthernet2"]
-    - endpoints: ["LON-ACC2:GigabitEthernet2", "LON-CORE2:GigabitEthernet3"]
-    - endpoints: ["LON-ACC3:GigabitEthernet2", "LON-CORE2:GigabitEthernet4"]
+    - endpoints: ["LON-ACC1:GigabitEthernet3", "LON-CORE2:GigabitEthernet3"]
+    - endpoints: ["LON-ACC2:GigabitEthernet3", "LON-CORE2:GigabitEthernet4"]
+    - endpoints: ["LON-ACC3:GigabitEthernet3", "LON-CORE2:GigabitEthernet5"]
 
     # ── Paris: Core–Core link ───────────────────────────────────────────────
-    - endpoints: ["PAR-CORE1:GigabitEthernet1", "PAR-CORE2:GigabitEthernet1"]
+    - endpoints: ["PAR-CORE1:GigabitEthernet2", "PAR-CORE2:GigabitEthernet2"]
 
     # ── Paris: Access → Core1 uplinks ──────────────────────────────────────
-    - endpoints: ["PAR-ACC1:GigabitEthernet1", "PAR-CORE1:GigabitEthernet2"]
-    - endpoints: ["PAR-ACC2:GigabitEthernet1", "PAR-CORE1:GigabitEthernet3"]
-    - endpoints: ["PAR-ACC3:GigabitEthernet1", "PAR-CORE1:GigabitEthernet4"]
+    - endpoints: ["PAR-ACC1:GigabitEthernet2", "PAR-CORE1:GigabitEthernet3"]
+    - endpoints: ["PAR-ACC2:GigabitEthernet2", "PAR-CORE1:GigabitEthernet4"]
+    - endpoints: ["PAR-ACC3:GigabitEthernet2", "PAR-CORE1:GigabitEthernet5"]
 
     # ── Paris: Access → Core2 uplinks ──────────────────────────────────────
-    - endpoints: ["PAR-ACC1:GigabitEthernet2", "PAR-CORE2:GigabitEthernet2"]
-    - endpoints: ["PAR-ACC2:GigabitEthernet2", "PAR-CORE2:GigabitEthernet3"]
-    - endpoints: ["PAR-ACC3:GigabitEthernet2", "PAR-CORE2:GigabitEthernet4"]
+    - endpoints: ["PAR-ACC1:GigabitEthernet3", "PAR-CORE2:GigabitEthernet3"]
+    - endpoints: ["PAR-ACC2:GigabitEthernet3", "PAR-CORE2:GigabitEthernet4"]
+    - endpoints: ["PAR-ACC3:GigabitEthernet3", "PAR-CORE2:GigabitEthernet5"]
 
     # ── Cairo: Core–Core link ───────────────────────────────────────────────
-    - endpoints: ["CAI-CORE1:GigabitEthernet1", "CAI-CORE2:GigabitEthernet1"]
+    - endpoints: ["CAI-CORE1:GigabitEthernet2", "CAI-CORE2:GigabitEthernet2"]
 
     # ── Cairo: Access → Core1 uplinks ──────────────────────────────────────
-    - endpoints: ["CAI-ACC1:GigabitEthernet1", "CAI-CORE1:GigabitEthernet2"]
-    - endpoints: ["CAI-ACC2:GigabitEthernet1", "CAI-CORE1:GigabitEthernet3"]
-    - endpoints: ["CAI-ACC3:GigabitEthernet1", "CAI-CORE1:GigabitEthernet4"]
+    - endpoints: ["CAI-ACC1:GigabitEthernet2", "CAI-CORE1:GigabitEthernet3"]
+    - endpoints: ["CAI-ACC2:GigabitEthernet2", "CAI-CORE1:GigabitEthernet4"]
+    - endpoints: ["CAI-ACC3:GigabitEthernet2", "CAI-CORE1:GigabitEthernet5"]
 
     # ── Cairo: Access → Core2 uplinks ──────────────────────────────────────
-    - endpoints: ["CAI-ACC1:GigabitEthernet2", "CAI-CORE2:GigabitEthernet2"]
-    - endpoints: ["CAI-ACC2:GigabitEthernet2", "CAI-CORE2:GigabitEthernet3"]
-    - endpoints: ["CAI-ACC3:GigabitEthernet2", "CAI-CORE2:GigabitEthernet4"]
+    - endpoints: ["CAI-ACC1:GigabitEthernet3", "CAI-CORE2:GigabitEthernet3"]
+    - endpoints: ["CAI-ACC2:GigabitEthernet3", "CAI-CORE2:GigabitEthernet4"]
+    - endpoints: ["CAI-ACC3:GigabitEthernet3", "CAI-CORE2:GigabitEthernet5"]
